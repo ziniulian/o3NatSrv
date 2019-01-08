@@ -148,6 +148,11 @@ var tools = {
 							// console.log(d.toString("utf8"));
 							// console.log("Srv >>! --- e");
 
+if (id % 2 === 1) {
+	console.log("延时 ： " + id);
+	for (var y = 0; y < 10000000000; y ++) {}
+}
+
 							if (d.length < nn) {
 								// 数据未能一次性收齐
 								cs = tools.ss[id];
