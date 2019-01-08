@@ -157,7 +157,7 @@ var tools = {
 								tools.ss[id].write (d);
 								if (d.length > nn) {
 									// 一个新的请求接在前一个数据的尾部，是不太可能发生的情况。直接报错
-									console.log("--- Err --- " + d.length + " , " + nn));
+									console.log("--- Err --- " + d.length + " , " + nn);
 								}
 							}
 							break;
