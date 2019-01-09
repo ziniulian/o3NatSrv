@@ -3,7 +3,8 @@
 	"version": "1.0.0",
 	"main": "index.js",
 	"dependencies": {
-		"lzr": "~1.3.2"
+		"lzr": "~1.3.4",
+		"socket.io": "2.2.x"
 	},
 	"devDependencies": {},
 	"scripts": {
