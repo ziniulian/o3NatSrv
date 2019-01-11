@@ -10,8 +10,8 @@ var nato = {
 	keepLink: 0,
 	clsBuf: global.Buffer || require("buffer").Buffer,
 	pwd: process.env.OPENSHIFT_NODEJS_NATPWD || "zi%niu%lian",
-	ktim: process.env.OPENSHIFT_NODEJS_NATIM || 2000,
-	max: process.env.OPENSHIFT_NODEJS_NATMAX || 1000,		// 本机测试，并发最大连接数只有 6 个
+	ktim: 2000,
+	max: 1000,
 	rs: {},
 	sn: 0,
 
@@ -22,18 +22,20 @@ var nato = {
 
 	// 对接
 	lnk: function (s) {
+console.log("linking ...");
 		nato.socket = s;
 		s.removeAllListeners("data");
 		s.removeAllListeners("error");
 		s.removeAllListeners("end");
 		s.on("error", nato.endLnk);
 		s.on("end", nato.endLnk);
-		s.write("HTTP/1.1 200\r\nConnection: keep-alive\r\n\r\nOK");
+		s.write("HTTP/1.1 200\r\nConnection: keep-alive\r\n\r\nO,");
 		nato.keepLink = setInterval(nato.kpLnk, nato.ktim);
 	},
 
 	// 保持对接
 	kpLnk: function () {
+console.log("linking : " + Date.now());
 		if (!nato.wrt("T,")) {
 			nato.endLnk();
 		}
@@ -119,7 +121,9 @@ console.log(id);
 		if (o) {
 			nato.wrt("D" + id + ",");
 			delete nato.rs[id];
+console.log(id + " : next_001");
 			o.next();
+console.log(id + " : next_002");
 		}
 	},
 
@@ -235,21 +239,26 @@ srv.ro.post("*", function (req, res, next) {
 
 // 错误处理
 srv.use("*", function (req, res) {
+console.log("Err_101");
 // console.log(res.connection === res.socket);	// 返回为 true。connection 和 socket 是一个东西。
 	if (res.connection) {
+console.log("Err_102");
 		// 已经应答过的 res 没有 connection 属性，若再次应答将会报错！
 		try {
 			if (nato.keepLink) {
 				// res.status(408).send("超时!");
 				res.set({"Retry-After": "10"});	// 过载延迟时间
 				res.status(503).send("过载!");
+console.log("Err_103");
 			} else {
 				res.status(404).send("Hi!");
+console.log("Err_104");
 			}
 		} catch (e) {
-			// console.log(e.message);
+			console.log(e.message);
 		}
 	}
+console.log("Err_105");
 });
 
 srv.start();
