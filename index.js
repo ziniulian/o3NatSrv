@@ -20,6 +20,7 @@ var nato = {
 
 	// 监听器
 	listener: function (s) {
+		s.on("error", nato.hdErr);
 		if (nato.socket) {
 			nato.test(s, "OK!");
 		} else {
@@ -38,8 +39,8 @@ var nato = {
 		if ((dat.length > n) && (dat.toString("utf8", 5, 10) === "/lnk/") && (dat.toString("utf8", n, (n + 2)) === "/ ") && nato.chkPwd(dat.toString("utf8", 10, n))) {
 			nato.socket = this;
 			this.removeAllListeners("data");
-			this.on("error", nato.hdErr);
-			// this.on("error", nato.endLnk);	// 实际运行时，将不显示错误信息
+			this.removeAllListeners("error");
+			this.on("error", nato.endLnk);
 			this.on("end", nato.endLnk);
 			this.on("data", nato.hdDat);
 			nato.initLnk();
@@ -163,10 +164,9 @@ console.log("数据溢出");
 		s.end();
 	},
 
-	// 错误处理 （临时测试使用，实际运行时不需要）
+	// 错误处理
 	hdErr: function (e) {
-console.log ("Err : " + e.message);
-		nato.endLnk();
+		this.end();
 	}
 };
 
