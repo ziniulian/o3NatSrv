@@ -15,7 +15,7 @@ var nato = {
 	rs: {},		// 连接池
 	sn: 0,
 
-	ktim: 3000,
+	ktim: 15000,
 	max: 100,
 
 	// 监听器
@@ -78,7 +78,7 @@ console.log("linked");
 	// 保持对接，发送心跳
 	kepLnk: function () {
 		nato.keepLink = 0;
-		nato.socket.write("HTTP/1.1 200 lnk\r\nConnection: keep-alive\r\nContent-Length: 3\r\n\r\n" + Math.floor(Math.random() * 888 + 100));
+		nato.socket.write("HTTP/1.1 200 lnk\r\nConnection: keep-alive\r\nContent-Length: 0\r\n\r\n");
 	},
 
 	// 接收信息
@@ -159,7 +159,7 @@ console.log("数据溢出");
 
 	// 测试回复
 	test: function (s, msg) {
-		s.write("HTTP/1.0 404\r\nConnection: close\r\nContent-Length: " + msg.length + "\r\n\r\n" + msg);
+		s.write("HTTP/1.0 503\r\nConnection: close\r\nContent-Length: " + msg.length + "\r\n\r\n" + msg);
 		s.end();
 	},
 
