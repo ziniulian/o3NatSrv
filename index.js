@@ -15,7 +15,7 @@ var nato = {
 	rs: {},		// 连接池
 	sn: 0,
 
-	ktim: 17000,
+	ktim: 3000,
 	max: 100,
 
 	// 监听器
@@ -68,18 +68,17 @@ console.log("link end!");
 	// 对接初始化
 	initLnk: function () {
 		nato.size = 0;
-		nato.keepLink = 0;
 		nato.sn = 0;
 		nato.ws = [];
 		nato.rs = {};
-		nato.socket.write("HTTP/1.1 200 lnk\r\nConnection: keep-alive\r\nContent-Length: 3\r\n\r\nlnk");
+		nato.kepLnk();
 console.log("linked");
 	},
 
 	// 保持对接，发送心跳
 	kepLnk: function () {
 		nato.keepLink = 0;
-		nato.socket.write("HTTP/1.1 200 lnk\r\nConnection: keep-alive\r\nContent-Length: 0\r\n\r\n");
+		nato.socket.write("HTTP/1.1 200 lnk\r\nConnection: keep-alive\r\nContent-Length: 3\r\n\r\n" + Math.floor(Math.random() * 888 + 100));
 	},
 
 	// 接收信息
