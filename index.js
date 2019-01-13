@@ -6,32 +6,24 @@ var nato = {
 	pwd: process.env.OPENSHIFT_NODEJS_NATPWD || "pwd",
 	pwdLen: 3,
 	port: 8080,
-	rs: null,	// 接收端
-	ws: null,	// 发送端
-	keepLink: 0,
-	ktim: 20000,
-	max: 100,
-	os: {},		// 其它连接
+
+	socket: null,
+	size: 0,		// 尚未接收完的数据大小
+	buf: null,	// 已接收到的数据缓存
+	keepLink: 0,	// 心跳ID
+	ws: [],		// 任务堆
+	rs: {},		// 连接池
 	sn: 0,
+
+	ktim: 17000,
+	max: 100,
 
 	// 监听器
 	listener: function (s) {
-		if (nato.keepLink) {
-			if (nato.rs) {
-				s.on("error", nato.hdErr);
-				s.on("end", nato.hdEnd);
-nato.ws.write(s.remoteAddress + ":" + s.remotePort + ",");
-				s.write("HTTP/1.1 200\r\nConnection: close\r\nContent-Length: 3\r\n\r\nOK!");
-				s.end();
-			} else {
-				s.on("error", nato.hdErr);
-				s.on("end", nato.hdEnd);
-				s.on("data", nato.chkRs);
-			}
+		if (nato.socket) {
+			nato.test(s, "OK!");
 		} else {
-			s.on("error", nato.hdErr);
-			s.on("end", nato.hdEnd);
-			s.on("data", nato.chkWs);
+			s.on("data", nato.lnk);
 		}
 	},
 
@@ -40,195 +32,141 @@ nato.ws.write(s.remoteAddress + ":" + s.remotePort + ",");
 		return p === nato.pwd;
 	},
 
-	// 检测发送端
-	chkWs: function (dat) {
-		var n = 9 + nato.pwdLen;
-		if ((dat.length > n) && (dat.toString("utf8", 5, 9) === "/ws/") && (dat.toString("utf8", n, (n + 2)) === "/ ") && nato.chkPwd(dat.toString("utf8", 9, n))) {
-			nato.ws = this;
-			nato.keepLink = setInterval(nato.kpLnk, nato.ktim);
+	// 对接
+	lnk: function (dat) {
+		var n = 10 + nato.pwdLen;
+		if ((dat.length > n) && (dat.toString("utf8", 5, 10) === "/lnk/") && (dat.toString("utf8", n, (n + 2)) === "/ ") && nato.chkPwd(dat.toString("utf8", 10, n))) {
+			nato.socket = this;
 			this.removeAllListeners("data");
-			this.removeAllListeners("error");
-			this.removeAllListeners("end");
-			this.on("error", nato.wsErr);
-			this.on("end", nato.wsEnd);
-			// this.on("data", nato.hdRs);
-			this.write("HTTP/1.1 200\r\nConnection: keep-alive\r\n\r\nW,");
+			this.on("error", nato.hdErr);
+			// this.on("error", nato.endLnk);	// 实际运行时，将不显示错误信息
+			this.on("end", nato.endLnk);
+			this.on("data", nato.hdDat);
+			nato.initLnk();
 		} else {
-			nato.err(this, "no WS!");
+			nato.test(this, "no link");
 		}
 	},
-
-	// 保持对接
-	kpLnk: function () {
-		if (nato.ws) {
-			nato.ws.write("L,");
-		}
-	},
-
-	// 发送端错误处理
-	wsErr: function (e) {
-console.log ((this === nato.ws?"WS":"RS") + "_Err : " + e.message);
-		nato.wsEnd();
-	},
-
-	// 终止发送端
-	wsEnd: function () {
-		if (nato.keepLink) {
-			clearInterval(nato.keepLink);
-			nato.keepLink = 0;
-			// 清空所有其它连接 ...
-			if (nato.ws) {
-				nato.ws.write("E,");
-			}
-		}
-		if (nato.rs) {
-			nato.rs.end();
-			nato.rs = null;
-		}
-		if (nato.ws) {
-			nato.ws.end();
-			nato.ws = null;
-		}
-	},
-
-	// 检测接收端
-	chkRs: function (dat) {
-		var n = 9 + nato.pwdLen;
-		if ((dat.length > n) && (dat.toString("utf8", 5, 9) === "/rs/") && (dat.toString("utf8", n, (n + 2)) === "/ ") && nato.chkPwd(dat.toString("utf8", 9, n))) {
-			nato.rs = this;
-			this.removeAllListeners("data");
-			this.removeAllListeners("error");
-			this.removeAllListeners("end");
-			this.on("error", nato.wsErr);
-			this.on("end", nato.wsEnd);
-			this.on("data", nato.hdRs);
-			nato.ws.write("R,");
-		} else {
-			nato.err(this, "no RS!");
-		}
-	},
-
-	// 接收信息
-	hdRs: function (dat) {
-console.log(dat.toString("utf8"));
-	},
-
-
-/*************************************************/
 
 	// 停止对接
 	endLnk: function () {
 		if (nato.keepLink) {
-			clearInterval(nato.keepLink);
+			clearTimeout(nato.keepLink);
 			nato.keepLink = 0;
-			nato.sn = 0;
-			for (var s in nato.rs) {
-				nato.del(s);
-			}
-			nato.wrt("E,");
-			setTimeout(nato.endSocket, 1);
 		}
-	},
-	endSocket: function () {
-		nato.socket.end();
-		nato.socket = null;
-	},
-
-	// 获取一个可用ID
-	getId: function () {
-		var id = 0, k = 0;
-		if (nato.keepLink) {
-			do {
-				id = (++ nato.sn);
-				if (id > nato.max) {
-					if (k) {
-						id = 0;
-						return 0;
-					} else {
-						k = 1;
-						nato.sn = 0;
-						id = (++ nato.sn);
-					}
-				}
-			} while (nato.rs[id]);
-		}
-		return id;
-	},
-
-	// 创建一个连接
-	crt: function (req, res) {
-// console.log(req.socket.localPort + " -- " + req.socket.remotePort);
-		var id = nato.getId();
-		var o = null;
-		if (id) {
-			o = {
-				id: id,
-				req: req,
-				res: res,
-				c: {	// 内容 content
-					ok: true,
-					// b: nato.clsBuf.alloc(0),		// 主体 body
-					h: {	// HTTP头 header
-						method: req.method,
-						path: req.originalUrl,
-						headers: req.headers
-					}
-				}
-			};
-			req.socket.on("error", function (e) {
-				nato.del(id);
-			});
-			req.socket.on("end", function () {
-				nato.del(id);
-			});
-			nato.rs[id] = o;
-		}
-		return o;
-	},
-
-	// 删除一个连接
-	del: function (id) {
-		var o = nato.rs[id];
-		if (o) {
-			nato.wrt("D" + id + ",");
-			delete nato.rs[id];
-			nato.err(o.res);
-		}
-	},
-
-	// 写数据
-	wrt: function (msg) {
 		if (nato.socket) {
-			nato.socket.write(msg);
-			return true;
+			var s = nato.socket;
+			nato.socket = null;
+			// 清空所有任务
+			// 清空连接池
+			s.end();
+		}
+console.log("link end!");
+	},
+
+	// 对接初始化
+	initLnk: function () {
+		nato.size = 0;
+		nato.keepLink = 0;
+		nato.sn = 0;
+		nato.ws = [];
+		nato.rs = {};
+		nato.socket.write("HTTP/1.1 200 lnk\r\nConnection: keep-alive\r\nContent-Length: 3\r\n\r\nlnk");
+console.log("linked");
+	},
+
+	// 保持对接，发送心跳
+	kepLnk: function () {
+		nato.keepLink = 0;
+		nato.socket.write("HTTP/1.1 200 lnk\r\nConnection: keep-alive\r\nContent-Length: 0\r\n\r\n");
+	},
+
+	// 接收信息
+	hdDat: function (dat) {
+		if (nato.size) {
+			nato.buf.push(dat);
+			nato.size -= dat.length;
+			if (nato.size === 0) {
+				nato.doWrk(nato.clsBuf.concat(nato.buf));
+			} else if (nato.size < 0) {
+				// 有问题，不应出现这种状况
+console.log("数据溢出");
+				nato.endLnk();
+			}
 		} else {
-			return false;
+			switch (dat.toString("utf8", 6, 9)) {
+				case "lnk":	// 心跳
+					nato.hdRtn(true);
+					break;
+				case "rtn":	// 反馈
+					nato.hdRtn();
+					break;
+				case "wrk":	// 任务
+					var i = dat.indexOf("Content-Length: ") + 16;
+					var j = dat.indexOf("\r\n", i, "utf8");
+					nato.size = dat.toString("utf8", i, j);
+					i = dat.indexOf("\r\n\r\n", j, "utf8") + 4;
+					j = dat.length - i;
+					if (nato.size === j) {
+						nato.size = 0;
+						nato.doWrk(dat.slice(i));
+					} else {
+						nato.size -= j;
+						nato.buf = [dat.slice(i)];
+					}
+					break;
+			}
 		}
 	},
 
-	// 发送信号
-	emit: function (o) {
-		if (!nato.wrt("G" + o.id + ",")) {
-			nato.err(o.res);
+	// 反馈处理
+	hdRtn: function (isLnk) {
+		if (nato.ws.length) {
+			nato.sendWrk();
+		} else if (isLnk) {
+			nato.keepLink = setTimeout(nato.kepLnk, nato.ktim);
+		} else {
+			nato.kepLnk();
 		}
 	},
 
+	// 发送任务
+	sendWrk: function () {
+		// ... 主内容 ...
 
-/**********************************************/
+		nato.ws = [];
+	},
 
-	// 错误回复
-	err: function (s, msg) {
-		s.write("HTTP/1.1 404\r\nConnection: close\r\nContent-Length: " + msg.length + "\r\n\r\n" + msg);
+	// 执行任务
+	doWrk: function (dat) {
+		// ... 主内容 ...
+
+		// 连接继续
+		nato.hdRtn();
+	},
+
+	// 添加任务
+	addWrk: function (id, lng, dat) {
+		// ... 主内容 ...
+
+		// 若处于心跳期，则停止心跳，发送任务
+		if (nato.keepLink) {
+			clearTimeout(nato.keepLink);
+			nato.keepLink = 0;
+			nato.sendWrk();
+		}
+	},
+
+	// 测试回复
+	test: function (s, msg) {
+		s.write("HTTP/1.0 404\r\nConnection: close\r\nContent-Length: " + msg.length + "\r\n\r\n" + msg);
 		s.end();
 	},
 
-	// 错误处理
+	// 错误处理 （临时测试使用，实际运行时不需要）
 	hdErr: function (e) {
-console.log(e);
-		this.end();
-	},
-	hdEnd: function () {
-console.log("end");
+console.log ("Err : " + e.message);
+		nato.endLnk();
 	}
 };
 
