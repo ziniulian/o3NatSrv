@@ -250,16 +250,18 @@ var nato = {
 
 	// 发送信息
 	send: function (s, nam, dat) {
-		var d = "HTTP/1.1 200 " + nam + "\r\nConnection: keep-alive\r\nContent-Length: ";
-		if (dat) {
-			d = nato.clsBuf.concat ([
-				nato.clsBuf.from (d + dat.length + "\r\n\r\n"),
-				dat
-			]);
-		} else {
-			d += "0\r\n\r\n";
+		if (s) {
+			var d = "HTTP/1.1 200 " + nam + "\r\nConnection: keep-alive\r\nContent-Length: ";
+			if (dat) {
+				d = nato.clsBuf.concat ([
+					nato.clsBuf.from (d + dat.length + "\r\n\r\n"),
+					dat
+				]);
+			} else {
+				d += "0\r\n\r\n";
+			}
+			s.write(d);
 		}
-		s.write(d);
 	},
 
 	// 测试回复
