@@ -4,7 +4,7 @@ var net = require("net");
 var nato = {
 	clsBuf: global.Buffer || require("buffer").Buffer,
 	pwd: process.env.OPENSHIFT_NODEJS_NATPWD || "pwd",
-	pwdLen: 3,
+	pwdLen: 10 + 3,
 	port: 8080,
 
 	socket: null,
@@ -24,11 +24,7 @@ var nato = {
 	// 监听器
 	listener: function (s) {
 		s.on("error", nato.hdErr);
-		if (nato.socket) {
-			nato.send(s, "OK", nato.clsBuf.from(JSON.stringify(nato.reLinkTestDat)));
-		} else {
-			s.on("data", nato.lnk);
-		}
+		s.on("data", nato.first);
 	},
 
 	// 密码校验
@@ -36,16 +32,98 @@ var nato = {
 		return p === nato.pwd;
 	},
 
-	// 对接
-	lnk: function (dat) {
-		var n = 10 + nato.pwdLen;
-		if ((dat.length > n) && (dat.toString("utf8", 5, 10) === "/lnk/") && (dat.toString("utf8", n, (n + 2)) === "/ ") && nato.chkPwd(dat.toString("utf8", 10, n))) {
-			this.removeAllListeners("data");
-			this.on("data", nato.hdDat);
-			nato.size = 0;
-			nato.send(this, "lnk");
+	// 初次连接
+	first: function (dat) {
+		// 流程：
+		// 检查HTTP头 \r\n\r\n ， 若没有则报错
+		// 检查是否为对接连接的交互信息（lnk、rtn、wrk）
+			// 是，检查是否为有密码的对接指令
+				// 是，密码检查
+					// 正确：
+						// 若已存在 对接连接（ socket ），则删除原对接连接
+						// 将对接连接改为此连接
+					// 错误：报错
+				// 否，检查是否存在对接连接（ socket ）
+					// 存在：
+						// 删除原对接连接
+						// 将对接连接改为此连接
+						// 处理交互信息
+					// 不存在：报错
+			// 否，检查是否存在对接连接（ socket ）
+				// 存在：添加任务
+				// 不存在：报错
+
+		var i, e = false;
+		i = dat.indexOf("\r\n\r\n");
+		if (i) {
+			switch (dat.toString("utf8", 5, 10)) {
+				case "/lnk/":	// 心跳
+					if (dat.toString("utf8", 10, 11) === " ") {
+						if (nato.socket) {
+							nato.endLnk.call(nato.socket);
+							nato.lnk(this, dat);
+						} else {
+							e = true;
+							nato.send(this, "nLLOK", nato.clsBuf.from("no link + lnk ..."));
+						}
+					} else {
+						if (nato.chkPwd(dat.toString("utf8", 10, nato.pwdLen))) {
+							if (nato.socket) {
+								nato.endLnk.call(nato.socket);
+							}
+							nato.lnk(this);
+						} else {
+							e = true;
+							nato.send(this, "nPOK", nato.clsBuf.from("no pwd ..."));
+						}
+					}
+					break;
+				case "/rtn/":	// 反馈
+				case "/wrk/":	// 任务
+					if (nato.socket) {
+						nato.endLnk.call(nato.socket);
+						nato.lnk(this, dat);
+					} else {
+						e = true;
+						nato.send(this, "nLWOK", nato.clsBuf.from("no link + wrk ..."));
+					}
+					break;
+				default:
+					if (nato.socket) {
+						// TODO: 添加任务 ...
+						nato.send(this, "oOK", nato.clsBuf.from(JSON.stringify(nato.reLinkTestDat)));
+						this.end();
+					} else {
+						e = true;
+						nato.send(this, "nLOK", nato.clsBuf.from("no link ..."));
+					}
+					break;
+			}
 		} else {
-			nato.test(this, "<H1>no! No! NO!</H1>");
+			e = true;
+			nato.send(this, "nRN", nato.clsBuf.from("no \\r\\n\\r\\n ..."));
+		}
+		if (e) {
+			// nato.send(this, "oOK", nato.clsBuf.from("欢迎来到犟子工作室!"));
+			this.end();
+		}
+	},
+
+	// 对接
+	lnk: function (s, dat) {
+		nato.socket = s;
+		nato.size = 0;
+		s.removeAllListeners("data");
+		s.removeAllListeners("error");
+		s.on("error", nato.endLnk);
+		s.on("end", nato.endLnk);
+		s.on("data", nato.hdDat);
+		if (dat) {
+			nato.reLinkTestDat.push(Date.now() + " : ReLink");
+			nato.hdDat(dat);
+		} else {
+			nato.reLinkTestDat.push(Date.now() + " : link");
+			nato.send(s, "lnk");
 		}
 	},
 
@@ -63,21 +141,13 @@ var nato = {
 		this.end();
 	},
 
-	// 接收信息
+	// 交互信息处理
 	hdDat: function (dat) {
 		if (nato.size === 0) {
 			var k = dat.indexOf("\r\n\r\n");
 			if (k > 0) {
 				switch (dat.toString("utf8", 6, 9)) {
 					case "lnk":	// 心跳
-						if (!nato.socket) {
-							nato.socket = this;
-							this.removeAllListeners("error");
-							this.on("error", nato.endLnk);
-							this.on("end", nato.endLnk);
-							nato.reLinkTestDat.push(Date.now() + " : link");
-							// console.log("已连接 : " + Date.now());
-						}
 						nato.hdRtn(true);
 						break;
 					case "rtn":	// 反馈
@@ -105,7 +175,7 @@ var nato = {
 				}
 			} else if (dat.indexOf("\n\n")) {
 				console.log("不规范的结束符");
-				natc.endLnk.call(this);
+				nato.endLnk.call(this);
 			} else {
 				console.log("理论上不太会出现的HTTP头信息不完整");
 				nato.buf = dat;
