@@ -35,11 +35,8 @@ var nato = {
 	lnk: function (dat) {
 		if ((dat.length > nato.pwdLen) && (dat.toString("utf8", 5, 10) === "/lnk/") && (dat.toString("utf8", nato.pwdLen, (nato.pwdLen + 2)) === "/ ") && nato.chkPwd(dat.toString("utf8", 10, nato.pwdLen))) {
 			if (nato.socket) {
-				if (this.remoteAddress === nato.socket.remoteAddress) {
-					nato.endLnk.call(nato.socket);
-				} else {
-					this.write("HTTP/1.1 503 rae\r\nConnection: close\r\nContent-Length: 20\r\n\r\n<H1>no! No! NO!</H1>");
-				}
+				// (this.remoteAddress === nato.socket.remoteAddress) // O3内网的IP每次连接都可能不一样，故此判断没意义。
+				nato.endLnk.call(nato.socket);
 			}
 			nato.socket = this;
 			nato.size = 0;
@@ -58,96 +55,13 @@ var nato = {
 		}
 	},
 
-/*
-	// 初次连接
-	first: function (dat) {
-		// 流程：
-		// 检查HTTP头 \r\n\r\n ， 若没有则报错
-		// 检查是否为对接连接的交互信息（lnk、rtn、wrk）
-			// 是，检查是否为有密码的对接指令
-				// 是，密码检查
-					// 正确：
-						// 若已存在 对接连接（ socket ），则删除原对接连接
-						// 将对接连接改为此连接
-					// 错误：报错
-				// 否，检查是否存在对接连接（ socket ）
-					// 存在：
-						// 删除原对接连接
-						// 将对接连接改为此连接
-						// 处理交互信息
-					// 不存在：报错
-			// 否，检查是否存在对接连接（ socket ）
-				// 存在：添加任务
-				// 不存在：报错
-
-		var i, e = false;
-		i = dat.indexOf("\r\n\r\n");
-		if (i) {
-			switch (dat.toString("utf8", 5, 10)) {
-				case "/lnk/":	// 心跳
-					if (dat.toString("utf8", 10, 11) === " ") {
-						if (nato.socket) {
-							nato.endLnk.call(nato.socket);
-							nato.lnk(this, dat);
-						} else {
-							e = true;
-						}
-					} else {
-						if (nato.chkPwd(dat.toString("utf8", 10, nato.pwdLen))) {
-							if (nato.socket) {
-								nato.endLnk.call(nato.socket);
-							}
-							nato.lnk(this);
-						} else {
-							e = true;
-						}
-					}
-					break;
-				case "/rtn/":	// 反馈
-				case "/wrk/":	// 任务
-					if (nato.socket) {
-						nato.endLnk.call(nato.socket);
-						nato.lnk(this, dat);
-					} else {
-						e = true;
-					}
-					break;
-				default:
-					if (nato.socket) {
-						nato.addWrk(this, dat, i);
-					} else {
-						e = true;
-					}
-					break;
-			}
-		} else {
-			e = true;
-		}
-		if (e) {
-			this.write("HTTP/1.1 503 Err\r\nConnection: close\r\nContent-Length: 49\r\n\r\n<a href=\"https://www.ziniulian.tk/\">Hello LZR</a>");
-			this.end();
-		}
-	},
-
-	// 对接
-	lnk: function (s, dat) {
-		nato.socket = s;
-		nato.size = 0;
-		s.removeAllListeners("data");
-		s.removeAllListeners("error");
-		s.on("error", nato.endLnk);
-		s.on("end", nato.endLnk);
-		s.on("data", nato.hdDat);
-		if (dat) {
-			nato.hdDat(dat);
-		} else {
-			nato.send(s, "lnk");
-		}
-		console.log("已连接 : " + Date.now());
-	},
-*/
 	// 停止对接
 	endLnk: function () {
+		this.removeAllListeners("data");
+		this.removeAllListeners("error");
+		this.removeAllListeners("end");
+		this.on("error", natc.hdErr);
+		this.end();
 		if (nato.keepLink) {
 			clearTimeout(nato.keepLink);
 			nato.keepLink = 0;
@@ -156,7 +70,6 @@ var nato = {
 			nato.socket = null;
 			console.log("已断开 : " + Date.now());
 		}
-		this.end();
 	},
 
 	// 交互信息处理
