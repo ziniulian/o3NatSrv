@@ -12,19 +12,18 @@ var nato = {
 	buf: null,	// 已接收到的数据缓存
 	keepLink: 0,	// 心跳ID
 	ws: [],		// 任务堆
+	pw: null,	// 回滚任务堆
 	rs: {},		// 连接池
 	sn: 0,
 
 	ktim: 5000,
 	max: 100,
 
-	// 重连测试数据
-	reLinkTestDat: [],
-
 	// 监听器
 	listener: function (s) {
 		s.on("error", nato.hdErr);
-		s.on("data", nato.first);
+		// s.on("data", nato.first);
+		s.on("data", nato.lnk);
 	},
 
 	// 密码校验
@@ -32,6 +31,34 @@ var nato = {
 		return p === nato.pwd;
 	},
 
+	// 对接
+	lnk: function (dat) {
+		if ((dat.length > nato.pwdLen) && (dat.toString("utf8", 5, 10) === "/lnk/") && (dat.toString("utf8", nato.pwdLen, (nato.pwdLen + 2)) === "/ ") && nato.chkPwd(dat.toString("utf8", 10, nato.pwdLen))) {
+			if (nato.socket) {
+				if (this.remoteAddress === nato.socket.remoteAddress) {
+					nato.endLnk.call(nato.socket);
+				} else {
+					this.write("HTTP/1.1 503 rae\r\nConnection: close\r\nContent-Length: 20\r\n\r\n<H1>no! No! NO!</H1>");
+				}
+			}
+			nato.socket = this;
+			nato.size = 0;
+			this.removeAllListeners("data");
+			this.removeAllListeners("error");
+			this.on("error", nato.endLnk);
+			this.on("end", nato.endLnk);
+			this.on("data", nato.hdDat);
+			nato.send(this, "lnk");
+			console.log("已连接 : " + Date.now());
+		} else if (nato.socket) {
+			nato.addWrk(this, dat);
+		} else {
+			this.write("HTTP/1.1 503 nle\r\nConnection: close\r\nContent-Length: 20\r\n\r\n<H1>no! No! NO!</H1>");
+			// this.write("HTTP/1.1 503 LZR\r\nConnection: close\r\nContent-Length: 135\r\n\r\n<style type=\"text/css\">body,iframe{padding:0;margin:0;width:100%;height:100%;}</style><iframe src=\"https://www.ziniulian.tk/\"></iframe>");
+		}
+	},
+
+/*
 	// 初次连接
 	first: function (dat) {
 		// 流程：
@@ -64,7 +91,6 @@ var nato = {
 							nato.lnk(this, dat);
 						} else {
 							e = true;
-							nato.send(this, "nLLOK", nato.clsBuf.from("no link + lnk ..."));
 						}
 					} else {
 						if (nato.chkPwd(dat.toString("utf8", 10, nato.pwdLen))) {
@@ -74,7 +100,6 @@ var nato = {
 							nato.lnk(this);
 						} else {
 							e = true;
-							nato.send(this, "nPOK", nato.clsBuf.from("no pwd ..."));
 						}
 					}
 					break;
@@ -85,26 +110,21 @@ var nato = {
 						nato.lnk(this, dat);
 					} else {
 						e = true;
-						nato.send(this, "nLWOK", nato.clsBuf.from("no link + wrk ..."));
 					}
 					break;
 				default:
 					if (nato.socket) {
-						// TODO: 添加任务 ...
-						nato.send(this, "oOK", nato.clsBuf.from(JSON.stringify(nato.reLinkTestDat)));
-						this.end();
+						nato.addWrk(this, dat, i);
 					} else {
 						e = true;
-						nato.send(this, "nLOK", nato.clsBuf.from("no link ..."));
 					}
 					break;
 			}
 		} else {
 			e = true;
-			nato.send(this, "nRN", nato.clsBuf.from("no \\r\\n\\r\\n ..."));
 		}
 		if (e) {
-			// nato.send(this, "oOK", nato.clsBuf.from("欢迎来到犟子工作室!"));
+			this.write("HTTP/1.1 503 Err\r\nConnection: close\r\nContent-Length: 49\r\n\r\n<a href=\"https://www.ziniulian.tk/\">Hello LZR</a>");
 			this.end();
 		}
 	},
@@ -119,14 +139,13 @@ var nato = {
 		s.on("end", nato.endLnk);
 		s.on("data", nato.hdDat);
 		if (dat) {
-			nato.reLinkTestDat.push(Date.now() + " : ReLink");
 			nato.hdDat(dat);
 		} else {
-			nato.reLinkTestDat.push(Date.now() + " : link");
 			nato.send(s, "lnk");
 		}
+		console.log("已连接 : " + Date.now());
 	},
-
+*/
 	// 停止对接
 	endLnk: function () {
 		if (nato.keepLink) {
@@ -135,8 +154,7 @@ var nato = {
 		}
 		if (nato.socket) {
 			nato.socket = null;
-			nato.reLinkTestDat.push(Date.now() + " : cut");
-			// console.log("已断开 : " + Date.now());
+			console.log("已断开 : " + Date.now());
 		}
 		this.end();
 	},
@@ -225,6 +243,7 @@ var nato = {
 	sendWrk: function () {
 		// ... 主内容 ...
 
+		nato.pw = nato.ws;
 		nato.ws = [];
 	},
 
@@ -237,8 +256,11 @@ var nato = {
 	},
 
 	// 添加任务
-	addWrk: function (id, lng, dat) {
+	addWrk: function (s, dat) {
 		// ... 主内容 ...
+
+		nato.send(s, "oOK", nato.clsBuf.from("OK!"));
+		s.end();
 
 		// 若处于心跳期，则停止心跳，发送任务
 		if (nato.keepLink) {
