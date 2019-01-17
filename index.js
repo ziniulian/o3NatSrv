@@ -5,28 +5,24 @@ var nato = {
 	clsBuf: global.Buffer || require("buffer").Buffer,
 	pwd: process.env.OPENSHIFT_NODEJS_NATPWD || "pwd",
 	pwdLen: 10 + 3,
-	port: 8080,
+	port: process.env.OPENSHIFT_NODEJS_PORT || 8080,
+	logAble: process.env.OPENSHIFT_NODEJS_LOG || false,
 
 	socket: null,
 	buf: null,	// 头部不足的缓存
 	twrk: null,	// 未接收完数据的任务
 	swrk: 0,	// 一次任务请求的总数据长度
 
-	// ws: [],		// 任务堆
-	// pw: null,	// 回滚任务堆
 	rs: {},		// 连接池
 	sn: 0,
 
 	keepLink: 0,
-	ktim: 17000,
-	max: 100,
+	ktim: process.env.OPENSHIFT_NODEJS_NATIM || 17000,
+	max: 100,	// id 最值
+	maxConn: 6,	// 最大连接数 （并发连接数超过 7 时，node.js 连接将处于阻塞排队状态）
 
 	// 监听器
 	listener: function (s) {
-		// srv.getConnections (function (e, n) {
-		// 	console.log("异步获取当前连接数 ： " + n);
-		// });
-		// console.log(srv.listenerCount() + " / " + srv.getMaxListeners() + " , " + srv._connections + " / " + srv.maxConnections);
 		s.on("error", nato.hdErr);
 		s.on("data", nato.lnk);
 	},
@@ -50,7 +46,7 @@ var nato = {
 			this.on("end", nato.endLnk);
 			this.write("HTTP/1.1 200 lnk\r\nConnection: keep-alive\r\n\r\n");
 			nato.kepLnk();
-			console.log("已连接 : " + Date.now());
+			nato.log("已连接 : " + Date.now());
 		} else if (nato.socket) {
 			if (dat.indexOf("POST /wrk/ ") === 0) {
 				if ((nato.swrk === 0) && (dat.indexOf("\r\n\r\n") > 0)) {
@@ -60,7 +56,7 @@ var nato = {
 				} else {
 					this.end();
 				}
-			} else if (srv._connections < 7) {
+			} else if (srv._connections <= nato.maxConn) {
 				var id = this.id || nato.getId(this);
 				if (id) {
 					this.removeAllListeners("data");
@@ -79,7 +75,7 @@ var nato = {
 			e = true;
 		}
 		if (e) {
-			this.write("HTTP/1.1 302\r\nLocation: https://www.ziniulian.tk/\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+			this.write("HTTP/1.1 302\r\nLocation: https://www.ziniulian.tk/home.html\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
 			this.end();
 		}
 	},
@@ -96,7 +92,7 @@ var nato = {
 		}
 		if (nato.socket) {
 			nato.socket = null;
-			console.log("已断开 : " + Date.now());
+			nato.log("已断开 : " + Date.now());
 		}
 		// TODO: 任务回滚
 	},
@@ -115,7 +111,7 @@ var nato = {
 
 	// 任务处理
 	hdWrk: function (dat) {
-console.log("<< -- " + dat.length);
+		nato.log("<< -- " + dat.length);
 		var i, j, p, id;
 		p = 0;	// 指针
 		if (nato.buf) {
@@ -127,10 +123,9 @@ console.log("<< -- " + dat.length);
 			i = dat.indexOf("Content-Length: ", 18, "utf8") + 16;
 			j = dat.indexOf("\r\n", i, "utf8");
 			nato.swrk = dat.toString("utf8", i, j) - 0;
-			// dat = dat.slice(p);
 			if (nato.twrk) {
 				// 数据传输出现了错误！理论不太可能发生。
-				console.log("hdWrk err twrk");
+				nato.log("hdWrk err twrk");
 				nato.twrk = null;
 			}
 		}
@@ -187,11 +182,11 @@ console.log("<< -- " + dat.length);
 		if (nato.swrk <= 0) {
 			if (nato.swrk || nato.twrk || nato.buf) {
 				// 数据传输出现了错误！理论不太可能发生。
-console.log("hdWrk err ...");
-console.log(nato.swrk);
-console.log(nato.twrk);
-console.log(nato.buf);
-console.log("hdWrk err_end!");
+				nato.log("hdWrk err ...");
+				nato.log(nato.swrk);
+				nato.log(nato.twrk);
+				nato.log(nato.buf);
+				nato.log("hdWrk err_end!");
 				this.write("HTTP/1.1 404 wER\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
 				this.end();
 			} else {
@@ -202,7 +197,7 @@ console.log("hdWrk err_end!");
 
 	// 执行任务
 	doWrk: function (id, dat) {
-		console.log(id + " : >> " + dat.length);
+		nato.log(id + " : >> " + dat.length);
 		var s = nato.rs[id];
 		if (s) {
 			s.write(dat);
@@ -212,7 +207,7 @@ console.log("hdWrk err_end!");
 	// 清除子连接
 	clrSub: function (id) {
 		if (nato.rs[id]) {
-			console.log("End : " + id);
+			nato.log("End : " + id);
 			nato.rs[id].end();
 			delete nato.rs[id];
 		}
@@ -257,7 +252,7 @@ console.log("hdWrk err_end!");
 
 	// 添加任务
 	hdDat: function (dat) {
-		console.log(this.id + " : << " + dat.length);
+		nato.log(this.id + " : << " + dat.length);
 		nato.sendWrk(nato.clsBuf.concat([
 			nato.clsBuf.from(this.id + "." + dat.length + "."),
 			dat
@@ -279,9 +274,15 @@ console.log("hdWrk err_end!");
 	// 错误处理
 	hdErr: function (e) {
 		this.removeAllListeners("data");
-		this.removeAllListeners("error");
 		this.removeAllListeners("end");
 		this.end();
+	},
+
+	// 信息输出
+	log: function (msg) {
+		if (nato.logAble) {
+			console.log(msg);
+		}
 	}
 };
 
